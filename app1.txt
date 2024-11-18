@@ -1,0 +1,69 @@
+# coding: utf-8
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from flask import Flask, request, render_template
+import pickle
+
+# Load and preprocess dataset
+df = pd.read_csv("first_telc.csv")  # Replace with the path to your dataset
+
+# Encoding categorical variables
+le_gender = LabelEncoder()
+le_phoneservice = LabelEncoder()
+
+df['gender'] = le_gender.fit_transform(df['gender'])  # Male=1, Female=0
+df['PhoneService'] = le_phoneservice.fit_transform(df['PhoneService'])  # Yes=1, No=0
+
+# Selecting features and target
+X = df[['gender', 'SeniorCitizen', 'PhoneService']]
+y = (df['Contract'] == 'Month-to-month').astype(int)  # Example: predicting contract type
+
+# Splitting the dataset
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train the model
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
+
+# Save the model using pickle
+pickle.dump(model, open("model.sav", "wb"))
+
+# Flask app
+app = Flask("__name__")
+
+@app.route("/")
+def loadPage():
+    return render_template('home.html', query="")
+
+@app.route("/", methods=['POST'])
+def predict():
+    # Get inputs from form
+    gender = request.form['gender']
+    senior_citizen = request.form['senior_citizen']
+    phone_service = request.form['phone_service']
+
+    # Encode inputs to match the model
+    gender_encoded = le_gender.transform([gender])[0]
+    phone_service_encoded = le_phoneservice.transform([phone_service])[0]
+
+    # Prepare input for prediction
+    data = [[gender_encoded, senior_citizen, phone_service_encoded]]
+    prediction = model.predict(data)
+    probability = model.predict_proba(data)[:, 1]
+
+    # Output result
+    if prediction == 1:
+        output = "This customer is likely to have a Month-to-Month Contract."
+    else:
+        output = "This customer is unlikely to have a Month-to-Month Contract."
+
+    confidence = f"Confidence: {probability[0] * 100:.2f}%"
+    
+    return render_template('home.html', output1=output, output2=confidence,
+                           gender=gender, senior_citizen=senior_citizen, phone_service=phone_service)
+
+if __name__ == "__main__":
+    app.run(debug=True)
